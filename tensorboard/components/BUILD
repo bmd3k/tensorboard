@@ -33,13 +33,13 @@ tf_web_library(
     srcs = ["tensorboard.html"],
     path = "/",
     deps = [
-        ":polymer_lib_binary",
+        ":polymer_lib",
     ],
 )
 
 tensorboard_html_binary(
     name = "index",
-    compile = False,
+    compile = True,
     input_path = "/tensorboard.html",
     js_path = "/index.js",
     output_path = "/index.html",
