@@ -1025,10 +1025,10 @@ class _BlobRequestSender(object):
             )
 
             sent_blobs = 0
+            # Note the _send_blob() stream is internally flow-controlled.
+            # This rate limit applies to *starting* the stream.
+            self._rpc_rate_limiter.tick()
             for seq_index, blob in enumerate(self._blobs):
-                # Note the _send_blob() stream is internally flow-controlled.
-                # This rate limit applies to *starting* the stream.
-                self._rpc_rate_limiter.tick()
                 with self._tracker.blob_tracker(len(blob)) as blob_tracker:
                     sent_blobs += self._send_blob(
                         blob_sequence_id, seq_index, blob
