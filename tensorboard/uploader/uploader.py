@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import contextlib
 import functools
+import itertools
 import time
 
 import grpc
@@ -1024,21 +1025,28 @@ class _BlobRequestSender(object):
                 blob_sequence_id,
             )
 
-            sent_blobs = 0
-            # Note the _send_blob() stream is internally flow-controlled.
+            num_blobs = 0
+            len_blobs = 0
+            requests = []
+            # Note the _send_blobs() stream is internally flow-controlled.
             # This rate limit applies to *starting* the stream.
             self._rpc_rate_limiter.tick()
             for seq_index, blob in enumerate(self._blobs):
-                with self._tracker.blob_tracker(len(blob)) as blob_tracker:
-                    sent_blobs += self._send_blob(
-                        blob_sequence_id, seq_index, blob
-                    )
-                    blob_tracker.mark_uploaded(bool(sent_blobs))
+                num_blobs = num_blobs + 1
+                len_blobs = len_blobs + len(blob)
+                requests.append(self._write_blob_request_iterator(
+                    blob_sequence_id, seq_index, blob
+                ))
+
+            with self._tracker.blob_tracker(len(blob)) as blob_tracker:
+                sent = self._send_blobs(
+                    itertools.chain.from_iterable(requests), num_blobs, len_blobs
+                )
+                blob_tracker.mark_uploaded(sent)
 
             logger.info(
-                "Sent %d of %d blobs for sequence id: %s",
-                sent_blobs,
-                len(self._blobs),
+                "Sent %d blobs for sequence id: %s",
+                num_blobs,
                 blob_sequence_id,
             )
 
@@ -1070,27 +1078,14 @@ class _BlobRequestSender(object):
 
         return blob_sequence_id
 
-    def _send_blob(self, blob_sequence_id, seq_index, blob):
+    def _send_blobs(self, request_iterator, num_blobs, len_blobs):
         """Tries to send a single blob for a given index within a blob sequence.
 
-        The blob will not be sent if it was sent already, or if it is too large.
+        The blob will not be sent if it was sent already, or if
 
         Returns:
-          The number of blobs successfully sent (i.e., 1 or 0).
+        true if sent, false otherwise
         """
-        # TODO(soergel): retry and resume logic
-
-        if len(blob) > self._max_blob_size:
-            logger.warning(
-                "Blob too large; skipping.  Size %d exceeds limit of %d bytes.",
-                len(blob),
-                self._max_blob_size,
-            )
-            return 0
-
-        request_iterator = self._write_blob_request_iterator(
-            blob_sequence_id, seq_index, blob
-        )
         upload_start_time = time.time()
         count = 0
         # TODO(soergel): don't wait for responses for greater throughput
@@ -1102,22 +1097,35 @@ class _BlobRequestSender(object):
                 pass
             upload_duration_secs = time.time() - upload_start_time
             logger.info(
-                "Upload for %d chunks totaling %d bytes took %.3f seconds (%.3f MB/sec)",
+                "Upload for %d chunks over %d blobs totaling %d bytes took %.3f seconds (%.3f MB/sec)",
                 count,
-                len(blob),
+                num_blobs,
+                len_blobs,
                 upload_duration_secs,
-                len(blob) / upload_duration_secs / (1024 * 1024),
+                len_blobs / upload_duration_secs / (1024 * 1024),
             )
-            return 1
+            return True
         except grpc.RpcError as e:
+            # BDTODO: This doesn't make sense in batch mode, unfortunately. We
+            # error out if a single Blob fails and the rest of the batch fails?
+            # How do we make sure that error for one blob doesn't impact the
+            # remaining ones?
             if e.code() == grpc.StatusCode.ALREADY_EXISTS:
-                logger.error("Attempted to re-upload existing blob.  Skipping.")
-                return 0
+                logger.error("Attempted to re-upload existing blob. Skipping.")
+                return False
             else:
                 logger.info("WriteBlob RPC call got error %s", e)
                 raise
 
     def _write_blob_request_iterator(self, blob_sequence_id, seq_index, blob):
+        if len(blob) > self._max_blob_size:
+            logger.warning(
+                "Blob too large; skipping.  Size %d exceeds limit of %d bytes.",
+                len(blob),
+                self._max_blob_size,
+            )
+            return
+
         # For now all use cases have the blob in memory already.
         # In the future we may want to stream from disk; that will require
         # refactoring here.
