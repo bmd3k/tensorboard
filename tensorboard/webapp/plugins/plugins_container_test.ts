@@ -477,6 +477,159 @@ describe('plugins_component', () => {
     });
   });
 
+  fdescribe('pluginProperties', () => {
+    it('are set for matching plugin', async () => {
+      const plugins = {
+        alpha: {
+          disable_reload: false,
+          enabled: true,
+          loading_mechanism: {
+            type: LoadingMechanismType.CUSTOM_ELEMENT,
+            element_name: 'tb-alpha',
+          } as CustomElementLoadingMechanism,
+          tab_name: 'Alpha',
+          remove_dom: false,
+        },
+      };
+      store.overrideSelector(getPlugins, plugins);
+
+      const fixture = TestBed.createComponent(PluginsContainer);
+      fixture.componentInstance.pluginProperties = new Map([
+        ['alpha', new Map([['prop', 'custom_value']])],
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      setActivePlugin('alpha');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(
+        fixture.debugElement.query(By.css('tb-alpha')).nativeElement['prop']
+      ).toBe('custom_value');
+    });
+
+    it('are set with non-string values', async () => {
+      const plugins = {
+        alpha: {
+          disable_reload: false,
+          enabled: true,
+          loading_mechanism: {
+            type: LoadingMechanismType.CUSTOM_ELEMENT,
+            element_name: 'tb-alpha',
+          } as CustomElementLoadingMechanism,
+          tab_name: 'Alpha',
+          remove_dom: false,
+        },
+      };
+      store.overrideSelector(getPlugins, plugins);
+
+      const fixture = TestBed.createComponent(PluginsContainer);
+      fixture.componentInstance.pluginProperties = new Map([
+        [
+          'alpha',
+          new Map<string, any>([
+            ['string-prop', 'string'],
+            ['number-prop', 5],
+            ['boolean-prop', true],
+          ]),
+        ],
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      setActivePlugin('alpha');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const alphaEl = fixture.debugElement.query(By.css('tb-alpha'))
+        .nativeElement;
+      expect(alphaEl['string-prop']).toBe('string');
+      expect(alphaEl['number-prop']).toBe(5);
+      expect(alphaEl['boolean-prop']).toBe(true);
+    });
+
+    it('are set only with matching plugin id', async () => {
+      const plugins = {
+        alpha: {
+          disable_reload: false,
+          enabled: true,
+          loading_mechanism: {
+            type: LoadingMechanismType.CUSTOM_ELEMENT,
+            element_name: 'tb-alpha',
+          } as CustomElementLoadingMechanism,
+          tab_name: 'Alpha',
+          remove_dom: false,
+        },
+        beta: {
+          disable_reload: false,
+          enabled: true,
+          loading_mechanism: {
+            type: LoadingMechanismType.CUSTOM_ELEMENT,
+            element_name: 'tb-beta',
+          } as CustomElementLoadingMechanism,
+          tab_name: 'Beta',
+          remove_dom: false,
+        },
+        gamma: {
+          disable_reload: false,
+          enabled: true,
+          loading_mechanism: {
+            type: LoadingMechanismType.CUSTOM_ELEMENT,
+            element_name: 'tb-gamma',
+          } as CustomElementLoadingMechanism,
+          tab_name: 'Gamma',
+          remove_dom: false,
+        },
+      };
+      store.overrideSelector(getPlugins, plugins);
+
+      const fixture = TestBed.createComponent(PluginsContainer);
+      fixture.componentInstance.pluginProperties = new Map([
+        [
+          'alpha',
+          new Map([
+            ['alpha-prop', 'alpha-prop-value'],
+            ['alpha-prop-2', 'alpha-prop-2-value'],
+          ]),
+        ],
+        ['beta', new Map([['beta-prop', 'beta-prop-value']])],
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      setActivePlugin('alpha');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const alphaEl = fixture.debugElement.query(By.css('tb-alpha'))
+        .nativeElement;
+      expect(alphaEl['alpha-prop']).toBe('alpha-prop-value');
+      expect(alphaEl['alpha-prop-2']).toBe('alpha-prop-2-value');
+      expect(alphaEl['beta-prop']).toBeUndefined();
+
+      setActivePlugin('beta');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const betaEl = fixture.debugElement.query(By.css('tb-beta'))
+        .nativeElement;
+      expect(betaEl['alpha-prop']).toBeUndefined();
+      expect(betaEl['alpha-prop-2']).toBeUndefined();
+      expect(betaEl['beta-prop']).toBe('beta-prop-value');
+
+      setActivePlugin('gamma');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const gammaEl = fixture.debugElement.query(By.css('tb-gamma'))
+        .nativeElement;
+      expect(gammaEl['alpha-prop']).toBeUndefined();
+      expect(gammaEl['alpha-prop-2']).toBeUndefined();
+      expect(gammaEl['beta-prop']).toBeUndefined();
+    });
+  });
+
   describe('warning pages', () => {
     it('does not show any warning while fetching when list was never fetched', () => {
       store.overrideSelector(getPlugins, {});

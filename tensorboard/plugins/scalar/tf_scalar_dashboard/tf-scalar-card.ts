@@ -35,7 +35,6 @@ type RunTagItem = {run: string; tag: string};
  */
 const initialURLSearchParams = new URLSearchParams(window.location.search);
 
-
 // By default, request at most this many runs at once.
 //
 // Back-of-the-envelope math: each scalar datum JSON value contains
