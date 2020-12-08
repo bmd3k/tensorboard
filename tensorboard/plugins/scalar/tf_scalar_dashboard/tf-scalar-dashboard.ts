@@ -166,6 +166,7 @@ class TfScalarDashboard extends LegacyElementMixin(ArrayUpdateHelper) {
                   tag="[[item.tag]]"
                   tooltip-sorting-method="[[_tooltipSortingMethod]]"
                   x-type="[[_xType]]"
+                  batch-size="[[batchSize]]"
                 ></tf-scalar-card>
               </template>
             </tf-category-paginated-view>
@@ -205,6 +206,11 @@ class TfScalarDashboard extends LegacyElementMixin(ArrayUpdateHelper) {
 
   @property({type: Boolean})
   reloadOnReady: boolean = true;
+
+  // If specified, requests are limited to this many runs at one time. Otherwise
+  // uses DEFAULT_BATCH_SIZE from tf-scalar-card.
+  @property({type: Number})
+  batchSize: number;
 
   @property({
     type: Boolean,

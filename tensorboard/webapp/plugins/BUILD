@@ -16,6 +16,7 @@ tf_ng_module(
     ],
     deps = [
         ":plugin_registry",
+        ":types",
         "//tensorboard/webapp/core",
         "//tensorboard/webapp/core:types",
         "//tensorboard/webapp/core/store",
@@ -26,6 +27,14 @@ tf_ng_module(
         "@npm//rxjs",
     ],
 )
+
+tf_ts_library(
+    name = "types",
+    srcs = [
+        "types.ts",
+    ],
+)
+
 
 tf_ng_module(
     name = "plugin_registry",

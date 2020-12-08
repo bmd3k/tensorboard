@@ -37,6 +37,7 @@ import {
   CustomElementLoadingMechanism,
 } from '../types/api';
 import {PluginRegistryModule} from './plugin_registry_module';
+import {PluginProperties} from './types';
 
 interface ExperimentalPluginHostLib extends HTMLElement {
   registerPluginIframe(iframe: HTMLIFrameElement, plugin_id: string): void;
@@ -123,6 +124,16 @@ export class PluginsComponent implements OnChanges {
   @Input()
   lastUpdated?: number;
 
+  // Plugin-specific properties to set/override. Key of each entry is the id
+  // of the plugin while values are another Map of property/value pairs.
+  //
+  // For polymer-based plugins the property/value pairs are used to set property
+  // values directly on the polymer element before it is attached to the DOM.
+  //
+  // These properties are not yet used for other types of plugins.
+  @Input()
+  pluginProperties?: PluginProperties;
+
   @Input()
   environmentFailureNotFoundTemplate?: TemplateRef<any>;
 
@@ -207,6 +218,11 @@ export class PluginsComponent implements OnChanges {
           customElementPlugin.element_name
         );
         (pluginElement as any).reloadOnReady = false;
+        if (this.pluginProperties?.has(plugin.id)) {
+          for (const entry of this.pluginProperties.get(plugin.id)!.entries()) {
+            (pluginElement as any)[entry[0]] = entry[1];
+          }
+        }
         this.pluginsContainer.nativeElement.appendChild(pluginElement);
         break;
       }

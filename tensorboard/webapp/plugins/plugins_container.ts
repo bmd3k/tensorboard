@@ -34,6 +34,7 @@ import {LoadState, DataLoadState} from '../types/data';
 import {State} from '../core/store/core_types';
 
 import {PluginLoadState} from './plugins_component';
+import {PluginProperties} from './types';
 
 /** @typehack */ import * as _typeHackRxjs from 'rxjs';
 
@@ -66,6 +67,7 @@ const lastLoadedTimeInMs = createSelector(
       [dataLocation]="dataLocation$ | async"
       [lastUpdated]="lastLoadedTimeInMs$ | async"
       [pluginLoadState]="pluginLoadState$ | async"
+      [pluginProperties]="pluginProperties"
       [environmentFailureNotFoundTemplate]="environmentFailureNotFoundTemplate"
       [environmentFailureUnknownTemplate]="environmentFailureUnknownTemplate"
     ></plugins-component>
@@ -76,6 +78,16 @@ const lastLoadedTimeInMs = createSelector(
 export class PluginsContainer {
   readonly activeKnownPlugin$ = this.store.select(activePlugin);
   readonly activePluginId$ = this.store.select(getActivePlugin);
+
+  // Plugin-specific properties to set/override. Key of each entry is the id
+  // of the plugin while values are another Map of property/value pairs.
+  //
+  // For polymer-based plugins the property/value pairs are used to set property
+  // values directly on the polymer element before it is attached to the DOM.
+  //
+  // These properties are not yet used for other types of plugins.
+  @Input()
+  pluginProperties?: PluginProperties;
 
   @Input()
   environmentFailureNotFoundTemplate?: TemplateRef<any>;
