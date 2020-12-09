@@ -494,9 +494,9 @@ describe('plugins_component', () => {
       store.overrideSelector(getPlugins, plugins);
 
       const fixture = TestBed.createComponent(PluginsContainer);
-      fixture.componentInstance.pluginProperties = new Map([
-        ['alpha', new Map([['prop', 'custom_value']])],
-      ]);
+      fixture.componentInstance.pluginProperties = {
+        alpha: {prop: 'custom_value'},
+      };
       fixture.detectChanges();
       await fixture.whenStable();
 
@@ -525,16 +525,13 @@ describe('plugins_component', () => {
       store.overrideSelector(getPlugins, plugins);
 
       const fixture = TestBed.createComponent(PluginsContainer);
-      fixture.componentInstance.pluginProperties = new Map([
-        [
-          'alpha',
-          new Map<string, any>([
-            ['string-prop', 'string'],
-            ['number-prop', 5],
-            ['boolean-prop', true],
-          ]),
-        ],
-      ]);
+      fixture.componentInstance.pluginProperties = {
+        alpha: {
+          'string-prop': 'string',
+          'number-prop': 5,
+          'boolean-prop': true,
+        },
+      };
       fixture.detectChanges();
       await fixture.whenStable();
 
@@ -585,16 +582,13 @@ describe('plugins_component', () => {
       store.overrideSelector(getPlugins, plugins);
 
       const fixture = TestBed.createComponent(PluginsContainer);
-      fixture.componentInstance.pluginProperties = new Map([
-        [
-          'alpha',
-          new Map([
-            ['alpha-prop', 'alpha-prop-value'],
-            ['alpha-prop-2', 'alpha-prop-2-value'],
-          ]),
-        ],
-        ['beta', new Map([['beta-prop', 'beta-prop-value']])],
-      ]);
+      fixture.componentInstance.pluginProperties = {
+        alpha: {
+          'alpha-prop': 'alpha-prop-value',
+          'alpha-prop-2': 'alpha-prop-2-value',
+        },
+        beta: {'beta-prop': 'beta-prop-value'},
+      };
       fixture.detectChanges();
       await fixture.whenStable();
 

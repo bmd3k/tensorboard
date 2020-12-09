@@ -218,9 +218,10 @@ export class PluginsComponent implements OnChanges {
           customElementPlugin.element_name
         );
         (pluginElement as any).reloadOnReady = false;
-        if (this.pluginProperties?.has(plugin.id)) {
-          for (const entry of this.pluginProperties.get(plugin.id)!.entries()) {
-            (pluginElement as any)[entry[0]] = entry[1];
+        if (this.pluginProperties && plugin.id in this.pluginProperties) {
+          const propertiez = this.pluginProperties[plugin.id];
+          for (const key of Object.keys(propertiez)) {
+            (pluginElement as any)[key] = propertiez[key];
           }
         }
         this.pluginsContainer.nativeElement.appendChild(pluginElement);

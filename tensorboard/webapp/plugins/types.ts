@@ -18,4 +18,4 @@ limitations under the License.
  * The key is the id of the plugin.
  * The value is another map of property/value pairs.
  */
-export type PluginProperties = Map<string, Map<string, any>>;
+export type PluginProperties = {[plugin_id: string]: {[property: string]: any}};
