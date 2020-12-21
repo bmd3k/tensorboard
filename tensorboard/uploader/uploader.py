@@ -1005,14 +1005,15 @@ class _BlobRequestSender(object):
         for seq_index, blob in enumerate(blobs):
             self._num_blobs += 1
             self._size_blobs += len(blob)
-            if (len(self._requests) > 20):
-              # Flush if stream has reached size limit.
-              self.flush()
-            # BDTODO: Note that _write_blob_request_iterator can actually create
-            # multiple requests so this sort of messes with the size limit above
             self._requests.append(self._write_blob_request_iterator(
                 blob_sequence_id, seq_index, blob
             ))
+
+        # BDTODO: For now we don't break up batches in the middle of blob
+        # sequences (so my performance analysis makes subtly more sense)
+        if (len(self._requests) > 20):
+          # Flush if stream has reached size limit.
+          self.flush()
 
     def flush(self):
         logger.info(
