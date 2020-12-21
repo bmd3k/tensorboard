@@ -967,144 +967,81 @@ class _BlobRequestSender(object):
         self._max_blob_size = max_blob_size
         self._tracker = tracker
 
-        # Start in the empty state, just like self._new_request().
-        self._run_name = None
-        self._event = None
-        self._value = None
-        self._metadata = None
+        self._current_blob_sequence = {"run": None, "tag": None, "step": None, "blob_sequence_id": None}
+        self._requests = []
+        self._num_blob_sequences = 0
+        self._num_blobs = 0
+        self._size_blobs = 0
 
-    def _new_request(self):
-        """Declares the previous event complete."""
-        self._run_name = None
-        self._event = None
-        self._value = None
-        self._metadata = None
 
     def add_event(
         self, run_name, event, value, metadata,
     ):
-        """Attempts to add the given event to the current request.
-
-        If the event cannot be added to the current request because the byte
-        budget is exhausted, the request is flushed, and the event is added
-        to the next request.
-        """
-        if self._value:
-            raise RuntimeError("Tried to send blob while another is pending")
-        self._run_name = run_name
-        self._event = event  # provides step and possibly plugin_name
-        self._value = value
         # TODO(soergel): should we really unpack the tensor here, or ship
         # it wholesale and unpack server side, or something else?
         # TODO(soergel): can we extract the proto fields directly instead?
-        self._blobs = tensor_util.make_ndarray(self._value.tensor)
-        if self._blobs.ndim == 1:
-            self._metadata = metadata
-            self.flush()
-        else:
+        blobs = tensor_util.make_ndarray(value.tensor)
+        if blobs.ndim != 1:
             logger.warning(
                 "A blob sequence must be represented as a rank-1 Tensor. "
                 "Provided data has rank %d, for run %s, tag %s, step %s ('%s' plugin) .",
-                self._blobs.ndim,
+                blobs.ndim,
                 run_name,
-                self._value.tag,
-                self._event.step,
+                value.tag,
+                event.step,
                 metadata.plugin_data.plugin_name,
             )
-            # Skip this upload.
-            self._new_request()
+
+        # Is this a new run/tag/step combo? If so, create new blob sequence, else use the old one.
+        if (run_name == self._current_blob_sequence["run"] and value.tag == self._current_blob_sequence["tag"] and event.step == self._current_blob_sequence["step"]):
+          blob_sequence_id = self._current_blob_sequence["blob_sequence_id"]
+          logger.info("SAME BLOB SEQUENCE ID!")
+        else:
+          blob_sequence_id = self._get_or_create_blob_sequence(run_name, value.tag, event.step, len(blobs), event.wall_time, metadata)
+          self._current_blob_sequence = {"run": run_name, "tag": value.tag, "step": event.step, "blob_sequence_id": blob_sequence_id}
+          self._num_blob_sequences += 1
+
+
+        for seq_index, blob in enumerate(blobs):
+            self._num_blobs += 1
+            self._size_blobs += len(blob)
+            if (len(self._requests) > 20):
+              # Flush if stream has reached size limit.
+              self.flush()
+            # BDTODO: Note that _write_blob_request_iterator can actually create
+            # multiple requests so this sort of messes with the size limit above
+            self._requests.append(self._write_blob_request_iterator(
+                blob_sequence_id, seq_index, blob
+            ))
 
     def flush(self):
-        """Sends the current blob sequence fully, and clears it to make way for the next.
-        """
-        if self._value:
-            blob_sequence_id = self._get_or_create_blob_sequence()
-            logger.info(
-                "Sending %d blobs for sequence id: %s",
-                len(self._blobs),
-                blob_sequence_id,
-            )
-
-            num_blobs = 0
-            len_blobs = 0
-            requests = []
-            # Note the _send_blobs() stream is internally flow-controlled.
-            # This rate limit applies to *starting* the stream.
-            self._rpc_rate_limiter.tick()
-            for seq_index, blob in enumerate(self._blobs):
-                num_blobs = num_blobs + 1
-                len_blobs = len_blobs + len(blob)
-                requests.append(self._write_blob_request_iterator(
-                    blob_sequence_id, seq_index, blob
-                ))
-
-            with self._tracker.blob_tracker(len(blob)) as blob_tracker:
-                sent = self._send_blobs(
-                    itertools.chain.from_iterable(requests), num_blobs, len_blobs
-                )
-                blob_tracker.mark_uploaded(sent)
-
-            logger.info(
-                "Sent %d blobs for sequence id: %s",
-                num_blobs,
-                blob_sequence_id,
-            )
-
-        self._new_request()
-
-    def _get_or_create_blob_sequence(self):
-        request = write_service_pb2.GetOrCreateBlobSequenceRequest(
-            experiment_id=self._experiment_id,
-            run=self._run_name,
-            tag=self._value.tag,
-            step=self._event.step,
-            final_sequence_length=len(self._blobs),
-            metadata=self._metadata,
+        logger.info(
+            "Sending %d blobs for %d blob sequences in %d requests totaling %d bytes",
+            self._num_blobs,
+            self._num_blob_sequences,
+            len(self._requests),
+            self._size_blobs
         )
-        util.set_timestamp(request.wall_time, self._event.wall_time)
-        with _request_logger(request):
-            try:
-                # TODO(@nfelt): execute this RPC asynchronously.
-                response = grpc_util.call_with_retries(
-                    self._api.GetOrCreateBlobSequence, request
-                )
-                blob_sequence_id = response.blob_sequence_id
-            except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.NOT_FOUND:
-                    raise ExperimentNotFoundError()
-                logger.error("Upload call failed with error %s", e)
-                # TODO(soergel): clean up
-                raise
 
-        return blob_sequence_id
-
-    def _send_blobs(self, request_iterator, num_blobs, len_blobs):
-        """Tries to send a single blob for a given index within a blob sequence.
-
-        The blob will not be sent if it was sent already, or if
-
-        Returns:
-        true if sent, false otherwise
-        """
-        upload_start_time = time.time()
-        count = 0
         # TODO(soergel): don't wait for responses for greater throughput
         # See https://stackoverflow.com/questions/55029342/handling-async-streaming-request-in-grpc-python
         try:
-            for response in self._api.WriteBlob(request_iterator):
+            upload_start_time = time.time()
+            count = 0
+            for response in self._api.WriteBlob(itertools.chain.from_iterable(self._requests)):
                 count += 1
                 # TODO(soergel): validate responses?  probably not.
                 pass
             upload_duration_secs = time.time() - upload_start_time
             logger.info(
-                "Upload for %d chunks over %d blobs totaling %d bytes took %.3f seconds (%.3f MB/sec)",
+                "Upload for %d blobs for %d blob sequences in %d requests totaling %d bytes took %.3f seconds (%.3f MB/sec)",
+                self._num_blobs,
+                self._num_blob_sequences,
                 count,
-                num_blobs,
-                len_blobs,
+                self._size_blobs,
                 upload_duration_secs,
-                len_blobs / upload_duration_secs / (1024 * 1024),
+                self._size_blobs / upload_duration_secs / (1024 * 1024),
             )
-            return True
         except grpc.RpcError as e:
             # BDTODO: This doesn't make sense in batch mode, unfortunately. We
             # error out if a single Blob fails and the rest of the batch fails?
@@ -1116,6 +1053,38 @@ class _BlobRequestSender(object):
             else:
                 logger.info("WriteBlob RPC call got error %s", e)
                 raise
+
+        # Cleanup:
+        self._requests = []
+        self._num_blob_sequences = 0
+        self._num_blobs = 0
+        self._size_blobs = 0
+
+    def _get_or_create_blob_sequence(self, run, tag, step, num_blobs, wall_time, metadata):
+        request = write_service_pb2.GetOrCreateBlobSequenceRequest(
+            experiment_id=self._experiment_id,
+            run=run,
+            tag=tag,
+            step=step,
+            final_sequence_length=num_blobs,
+            metadata=metadata,
+        )
+        util.set_timestamp(request.wall_time, wall_time)
+        with _request_logger(request):
+            try:
+                # TODO(@nfelt): execute this RPC asynchronously.
+                response = grpc_util.call_with_retries(
+                    self._api.GetOrCreateBlobSequence, request
+                )
+                blob_sequence_id = response.blob_sequence_id
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.NOT_FOUND:
+                    raise ExperimentNotFoundError()
+                logger.error("GetOrCreateBlobSequence call failed with error %s", e)
+                # TODO(soergel): clean up
+                raise
+
+        return blob_sequence_id
 
     def _write_blob_request_iterator(self, blob_sequence_id, seq_index, blob):
         if len(blob) > self._max_blob_size:
