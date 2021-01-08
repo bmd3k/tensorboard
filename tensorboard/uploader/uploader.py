@@ -22,6 +22,7 @@ import contextlib
 import functools
 import itertools
 import time
+import os
 
 import grpc
 import six
@@ -1011,7 +1012,7 @@ class _BlobRequestSender(object):
 
         # BDTODO: For now we don't break up batches in the middle of blob
         # sequences (so my performance analysis makes subtly more sense)
-        if (len(self._requests) > 20):
+        if (len(self._requests) > int(os.environ.get("BLOB_BATCH_SIZE"))):
           # Flush if stream has reached size limit.
           self.flush()
 
