@@ -994,20 +994,22 @@ class _BlobRequestSender(object):
             )
 
         # Is this a new run/tag/step combo? If so, create new blob sequence, else use the old one.
-        if (run_name == self._current_blob_sequence["run"] and value.tag == self._current_blob_sequence["tag"] and event.step == self._current_blob_sequence["step"]):
-          blob_sequence_id = self._current_blob_sequence["blob_sequence_id"]
-          logger.info("SAME BLOB SEQUENCE ID!")
-        else:
-          blob_sequence_id = self._get_or_create_blob_sequence(run_name, value.tag, event.step, len(blobs), event.wall_time, metadata)
-          self._current_blob_sequence = {"run": run_name, "tag": value.tag, "step": event.step, "blob_sequence_id": blob_sequence_id}
-          self._num_blob_sequences += 1
+        # if (run_name == self._current_blob_sequence["run"] and value.tag == self._current_blob_sequence["tag"] and event.step == self._current_blob_sequence["step"]):
+        #   blob_sequence_id = self._current_blob_sequence["blob_sequence_id"]
+        #   logger.info("SAME BLOB SEQUENCE ID!")
+        # else:
+        #   blob_sequence_id = self._get_or_create_blob_sequence(run_name, value.tag, event.step, len(blobs), event.wall_time, metadata)
+        #   self._current_blob_sequence = {"run": run_name, "tag": value.tag, "step": event.step, "blob_sequence_id": blob_sequence_id}
+        #   self._num_blob_sequences += 1
 
 
         for seq_index, blob in enumerate(blobs):
             self._num_blobs += 1
             self._size_blobs += len(blob)
             self._requests.append(self._write_blob_request_iterator(
-                blob_sequence_id, seq_index, blob
+                seq_index, blob,
+                # Blob Sequence Information.
+                run_name, value.tag, event.step, len(blobs), event.wall_time, metadata
             ))
 
         # BDTODO: For now we don't break up batches in the middle of blob
@@ -1088,7 +1090,7 @@ class _BlobRequestSender(object):
 
         return blob_sequence_id
 
-    def _write_blob_request_iterator(self, blob_sequence_id, seq_index, blob):
+    def _write_blob_request_iterator(self, seq_index, blob, run, tag, step, num_blobs, wall_time, metadata):
         if len(blob) > self._max_blob_size:
             logger.warning(
                 "Blob too large; skipping.  Size %d exceeds limit of %d bytes.",
@@ -1105,7 +1107,6 @@ class _BlobRequestSender(object):
             chunk = blob[offset : offset + self._max_blob_request_size]
             finalize_object = offset + self._max_blob_request_size >= len(blob)
             request = write_service_pb2.WriteBlobRequest(
-                blob_sequence_id=blob_sequence_id,
                 index=seq_index,
                 data=chunk,
                 offset=offset,
@@ -1113,6 +1114,13 @@ class _BlobRequestSender(object):
                 finalize_object=finalize_object,
                 final_crc32c=None,
                 blob_bytes=len(blob),
+                # Blob Sequence Information:
+                experiment_id=self._experiment_id,
+                run=run,
+                tag=tag,
+                step=step,
+                final_sequence_length=num_blobs,
+                metadata=metadata,
             )
             yield request
 

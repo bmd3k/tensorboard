@@ -313,7 +313,8 @@ message GetBlobMetadataResponse {
 // WriteScalarRequest, because we only ever send one blob at a time.
 message WriteBlobRequest {
   // The ID of the BlobSequence of which this blob is a member.
-  string blob_sequence_id = 1;
+  // No longer except the blob sequence id.
+  // string blob_sequence_id = 1;
   // The position of this Blob within the BlobSequence
   int64 index = 2;
   // The bytes in this chunk.
@@ -335,6 +336,27 @@ message WriteBlobRequest {
   // Size in bytes of the entire blob.  Required in the first request
   // to allow quota allocation and management.
   int64 blob_bytes = 8;
+
+  // Blob Sequence Info now integrated into this request:
+
+  // Service-wide unique identifier of an uploaded log dir.
+  // eg: "1r9d0kQkh2laODSZcQXWP"
+  string experiment_id = 11;
+  // The name of the run to which the blob sequence belongs, for example
+  // "/some/path/mnist_experiments/run1/".
+  string run = 12;
+  // The name of the tag to which the blob sequence belongs, for example "loss".
+  string tag = 13;
+  // Step index within the run.
+  int64 step = 14;
+  // Timestamp of the creation of this blob sequence.
+  google.protobuf.Timestamp wall_time = 15;
+  // The total number of elements expected in the sequence.
+  // This effectively delares a number of initially empty 'upload slots',
+  // to be filled with subsequent WriteBlob RPCs.
+  int64 final_sequence_length = 16;
+  // Note that metadata.plugin_data.content does not carry the payload.
+  .tensorboard.SummaryMetadata metadata = 17;
 }
 
 message WriteBlobResponse {
