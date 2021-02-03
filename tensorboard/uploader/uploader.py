@@ -136,7 +136,7 @@ class TensorBoardUploader(object):
 
         if blob_rpc_rate_limiter is None:
             self._blob_rpc_rate_limiter = util.RateLimiter(
-                self._upload_limits.min_blob_request_interval / 1000
+                0 / 1000
             )
         else:
             self._blob_rpc_rate_limiter = blob_rpc_rate_limiter
